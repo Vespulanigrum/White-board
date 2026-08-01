@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tableau Blanc Texte</title>
+    <title>Tableau Blanc Partagé</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -49,55 +49,117 @@
 </head>
 <body>
     <div id="controls">
+        <button onclick="saveContent()">Sauvegarder</button>
         <button onclick="clearWhiteboard()">Effacer</button>
     </div>
-    <div 
-         id="whiteboard" 
-         contenteditable="true" 
-         oninput="saveContent()"
-         onblur="saveContent()"
+    <div
+         id="whiteboard"
+         contenteditable="true"
+         oninput="markAsModified()"
     >
-        Écrivez ici...
+        Chargement en cours...
     </div>
 
     <script>
-        // Charger le contenu sauvegardé
-        function loadContent() {
-            const savedContent = localStorage.getItem('whiteboardContent');
-            const savedDate = localStorage.getItem('whiteboardDate');
-            
-            if (savedContent && savedDate) {
-                const lastModified = new Date(savedDate);
-                const now = new Date();
-                const sevenDaysInMs = 7 * 24 * 60 * 60 * 1000;
-                
-                // Si le contenu a plus de 7 jours, on l'efface
-                if (now - lastModified > sevenDaysInMs) {
-                    localStorage.removeItem('whiteboardContent');
-                    localStorage.removeItem('whiteboardDate');
-                    document.getElementById('whiteboard').innerHTML = 'Écrivez ici...';
+        // Remplace ces variables par tes informations
+        const GITHUB_USER = "TON_PSEUDO";
+        const REPO_NAME = "NOM_DU_DEPOT";
+        const TOKEN = "TON_TOKEN_GITHUB"; // ⚠️ À ne pas partager !
+
+        // URL du fichier data.json sur GitHub
+        const DATA_URL = `https://api.github.com/repos/${GITHUB_USER}/${REPO_NAME}/contents/data.json`;
+
+        // Variable pour suivre si le contenu a été modifié
+        let isModified = false;
+
+        // Marque le contenu comme modifié
+        function markAsModified() {
+            isModified = true;
+        }
+
+        // Charge le contenu depuis data.json
+        async function loadContent() {
+            try {
+                const response = await fetch(`https://raw.githubusercontent.com/${GITHUB_USER}/${REPO_NAME}/main/data.json`);
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('whiteboard').innerHTML = data.content || "Écrivez ici...";
                 } else {
-                    document.getElementById('whiteboard').innerHTML = savedContent;
+                    // Si data.json n'existe pas, on le crée avec un contenu par défaut
+                    document.getElementById('whiteboard').innerHTML = "Écrivez ici...";
                 }
+            } catch (error) {
+                console.error("Erreur lors du chargement :", error);
+                document.getElementById('whiteboard').innerHTML = "Écrivez ici...";
             }
         }
 
-        // Sauvegarder le contenu
-        function saveContent() {
+        // Sauvegarde le contenu dans data.json
+        async function saveContent() {
             const content = document.getElementById('whiteboard').innerHTML;
-            localStorage.setItem('whiteboardContent', content);
-            localStorage.setItem('whiteboardDate', new Date().toISOString());
+            const data = { content: content };
+
+            try {
+                // On encode le contenu en base64 pour GitHub
+                const encodedContent = btoa(JSON.stringify(data));
+
+                // On vérifie si data.json existe déjà
+                const getResponse = await fetch(DATA_URL, {
+                    headers: {
+                        'Authorization': `token ${TOKEN}`
+                    }
+                });
+
+                let method = 'POST';
+                let url = DATA_URL;
+                let sha = null;
+
+                if (getResponse.ok) {
+                    const fileData = await getResponse.json();
+                    method = 'PUT';
+                    sha = fileData.sha;
+                }
+
+                // On envoie la requête pour créer/mettre à jour data.json
+                const response = await fetch(url, {
+                    method: method,
+                    headers: {
+                        'Authorization': `token ${TOKEN}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: "Mise à jour du tableau blanc",
+                        content: encodedContent,
+                        sha: sha
+                    })
+                });
+
+                if (response.ok) {
+                    isModified = false;
+                    alert("Contenu sauvegardé avec succès !");
+                } else {
+                    console.error("Erreur lors de la sauvegarde :", await response.text());
+                }
+            } catch (error) {
+                console.error("Erreur :", error);
+            }
         }
 
-        // Effacer manuellement
+        // Efface le contenu
         function clearWhiteboard() {
-            document.getElementById('whiteboard').innerHTML = 'Écrivez ici...';
-            localStorage.removeItem('whiteboardContent');
-            localStorage.removeItem('whiteboardDate');
+            document.getElementById('whiteboard').innerHTML = "Écrivez ici...";
+            markAsModified();
         }
 
-        // Charger le contenu au démarrage
+        // Charge le contenu au démarrage
         window.onload = loadContent;
+
+        // Sauvegarde automatique après 30 secondes d'inactivité
+        let timeout;
+        document.getElementById('whiteboard').addEventListener('input', () => {
+            clearTimeout(timeout);
+            timeout = setTimeout(saveContent, 30000); // 30 secondes
+        });
     </script>
 </body>
 </html>
